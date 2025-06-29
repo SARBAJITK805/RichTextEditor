@@ -116,17 +116,33 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   h1 {
     @apply text-2xl font-bold;
   }
+
   h2 {
     @apply text-xl font-bold;
   }
+
   h3 {
     @apply text-lg font-bold;
   }
-}
 
+  .scrollbar-hidden {
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE 10+ */
+  }
+
+
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+    /* Chrome, Safari */
+  }
+}
