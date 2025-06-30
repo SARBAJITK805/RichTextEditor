@@ -1,9 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,33 +10,52 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User{
-  id Int @unique @default(autoincrement())
+model User {
+  id String @id @default(cuid())
   email String @unique
   name String
   password String
-  document Document[]
-  permission Document_Permissions[]
+  documents Document[]
+  permissions Document_Permissions[]
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("users")
 }
 
-model Document{
-  id Int @unique @default(autoincrement())
-  title String @unique
+model Document {
+  id String @id @default(cuid())
+  title String
   content String
-  owner_id Int
-  user User @relation(fields: [owner_id],references: [id])
+  yjs_state Bytes?
+  owner_id String
+  owner User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  permissions Document_Permissions[]
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("documents")
 }
 
 enum Permission {
-  Owner
-  Editor
-  Commenter
-  Viewer
+  OWNER
+  EDITOR
+  COMMENTER
+  VIEWER
 }
 
-model Document_Permissions{
-  id Int @unique @default(autoincrement())
-  document_id Int
-  user User @relation(fields: [document_id],references: [id])
+model Document_Permissions {
+  id String @id @default(cuid())
+  document_id String
+  user_id String?
+  email String?
   permission_level Permission
+  document Document @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  granted_by String?
+  created_at DateTime @default(now())
+
+  @@unique([document_id, user_id])
+  @@unique([document_id, email])
+  @@map("document_permissions")
 }
