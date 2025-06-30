@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Menu, FileText, Plus, Search } from "lucide-react"
 import { useEffect, useState } from "react"
 import axios from "axios"
-import Link from "next/link"
 
 async function saveHandler(content: string, title: string) {
     try {
@@ -17,20 +16,25 @@ async function saveHandler(content: string, title: string) {
     }
 }
 
-async function clickeHandler(doc){
-    
+async function clickeHandler(doc: any, setContent: any, setTitle: any) {
+    console.log(doc.content);
+    console.log("inside");
+    setContent(doc.content)
+    setTitle(doc.title)
 }
 
 export default function TitleBar({
     content,
     title,
     setTitle,
+    setContent
 }: {
     content: string
     title: string
     setTitle: (value: string) => void
+    setContent: (value: string) => void
 }) {
-    const [documents, setDocuments] = useState<{ title: string }[]>([])
+    const [documents, setDocuments] = useState<{ title: string; content: string }[]>([])
     const [searchQuery, setSearchQuery] = useState("")
 
     useEffect(() => {
@@ -68,7 +72,7 @@ export default function TitleBar({
                         <div className="p-6 border-b border-gray-200">
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-lg font-semibold text-gray-900">Documents</h2>
-                                <Button size="sm" className="h-8 px-3">
+                                <Button size="sm" className="h-8 px-3" onClick={()=>{setContent("") ;setTitle("")}}>
                                     <Plus className="h-4 w-4 mr-1" />
                                     New
                                 </Button>
@@ -91,7 +95,7 @@ export default function TitleBar({
                             {filteredDocuments.length > 0 ? (
                                 <div className="space-y-1">
                                     {filteredDocuments.map((doc, i) => (
-                                        <div key={i} onClick={()=>clickeHandler(doc)}
+                                        <div key={i} onClick={() => clickeHandler(doc, setContent, setTitle)}
                                             className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors group"
                                         >
                                             <FileText className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />

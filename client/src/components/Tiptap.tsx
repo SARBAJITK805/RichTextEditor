@@ -11,6 +11,7 @@ import TitleBar from './TitleBar'
 const Tiptap = () => {
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
+  const [hasInitialized, setHasInitialized] = useState(true)
   console.log(content)
 
   const editor = useEditor({
@@ -43,16 +44,29 @@ const Tiptap = () => {
     },
   })
 
+  useEffect(() => {
+    if (editor && content && !hasInitialized) {
+      editor.commands.setContent(content)
+      setHasInitialized(true)
+    }
+  }, [editor, content])
+
+  useEffect(() => {
+    setHasInitialized(false)
+    if (editor) {
+      editor.commands.setContent(content)
+    }
+  }, [title])
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto">
         <div className="py-4">
-          <TitleBar title={title} setTitle={setTitle} content={content} />
+          <TitleBar title={title} setTitle={setTitle} content={content} setContent={setContent} />
         </div>
-        
-          <div className="border-b border-gray-200 px-6 py-3">
-            <MenuBar editor={editor} />
-        
+
+        <div className="border-b border-gray-200 px-6 py-3">
+          <MenuBar editor={editor} />
           <div className="p-6">
             <div className="rounded-lg border border-gray-200 shadow-sm">
               <EditorContent
