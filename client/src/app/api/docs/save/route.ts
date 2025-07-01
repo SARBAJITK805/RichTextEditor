@@ -9,22 +9,35 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     }
 
-    const { title, content } = await req.json()
+    const { title, content, permission } = await req.json()
 
     try {
         const existing = await prisma.document.findFirst({ where: { title } })
         if (!existing) {
-            await prisma.document.create({
-                data: { title, content, owner_id: Number(session.user.id) }
+            const resp = await prisma.document.create({
+                data: {
+                    title,
+                    content,
+                    owner_id: session.user.id,
+                    permissions: {
+                        create: {
+                            email: session.user.email,
+                            permission_level: permission
+                        }
+                    }
+                }
             })
+            return NextResponse.json({ message: "Document saved successfully", doc: resp })
         } else {
-            await prisma.document.update({
-                where: { title },
+            const resp = await prisma.document.update({
+                where: { 
+                    id:existing.id,
+                    title
+                },
                 data: { content }
             })
-            return NextResponse.json({ message: "Document updated successfully" })
+            return NextResponse.json({ message: "Document updated successfully", doc: resp })
         }
-        return NextResponse.json({ message: "Document saved successfully" })
     } catch (err) {
         console.error("Error saving doc:", err)
         return NextResponse.json({ message: "Error saving doc" }, { status: 500 })

@@ -32,7 +32,7 @@ export const authOptions = {
                     }
                     return {
                         id: existingUser.id.toString(),
-                        username: existingUser.email,
+                        email: existingUser.email,
                     }
 
                 } catch (error) {
@@ -46,7 +46,8 @@ export const authOptions = {
     secret: process.env.NEXTAUTH_SECRET,
     callbacks: {
         async session({ token, session }: any) {
-            session.user.id = token.sub
+            session.user.id = token.sub,
+            session.user.email=token.email
             return session
         }
     }

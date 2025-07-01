@@ -15,8 +15,8 @@ export default function AppBar() {
             </div>
             <div className="flex items-center gap-3">
                 <Avatar className="w-9 h-9">
-                    <AvatarImage src="/profile.jpg" alt="Profile" />
-                    <AvatarFallback>SK</AvatarFallback>
+                    <AvatarImage src="/profile.png" alt="Profile" />
+                    <AvatarFallback>U</AvatarFallback>
                 </Avatar>
                 <Button variant="outline" size="sm" onClick={session.data?.user ? signOut : signIn}>
                     {session.data?.user ? "Logout" : "SignIn"}

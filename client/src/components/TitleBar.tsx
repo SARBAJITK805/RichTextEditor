@@ -3,44 +3,41 @@
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Menu, FileText, Plus, Search } from "lucide-react"
+import {
+    Menu, FileText, Plus, Search, ShieldCheck, PencilLine, Eye
+} from "lucide-react"
 import { useEffect, useState } from "react"
 import axios from "axios"
-
-async function saveHandler(content: string, title: string) {
-    try {
-        const resp = await axios.post("/api/docs/save", { title, content }, { withCredentials: true });
-        console.log("Saved successfully:", resp.data);
-    } catch (error) {
-        console.error("Error saving:", error);
-    }
-}
-
-async function clickeHandler(doc: any, setContent: any, setTitle: any) {
-    console.log(doc.content);
-    console.log("inside");
-    setContent(doc.content)
-    setTitle(doc.title)
-}
+import ShareModal from "./ShareModal"
 
 export default function TitleBar({
     content,
     title,
+    permission,
     setTitle,
-    setContent
+    setContent,
+    setPermission
+
 }: {
     content: string
     title: string
+    permission: string
     setTitle: (value: string) => void
     setContent: (value: string) => void
+    setPermission: (value: "OWNER" | "EDITOR" | "VIEWER") => void
 }) {
-    const [documents, setDocuments] = useState<{ title: string; content: string }[]>([])
+    const [documents, setDocuments] = useState<
+        { title: string; content: string; permission: 'OWNER' | 'EDITOR' | 'VIEWER' }[]
+    >([])
+
     const [searchQuery, setSearchQuery] = useState("")
+    const [currDoc, setCurrDoc] = useState<{ id: string; content: string, title: string }>()
+    const[saved,setSaved]=useState(false)
 
     useEffect(() => {
         async function fetchDocs() {
             try {
-                const res = await axios.get("/api/docs", { withCredentials: true })
+                const res = await axios.get("/api/docs", { withCredentials: true })              
                 setDocuments(res.data.list)
             } catch (err) {
                 console.error("Error fetching documents:", err)
@@ -52,6 +49,38 @@ export default function TitleBar({
     const filteredDocuments = documents.filter(doc =>
         doc.title.toLowerCase().includes(searchQuery.toLowerCase())
     )
+
+    function getPermissionIcon(permission: string) {
+        switch (permission) {
+            case 'OWNER':
+                return <ShieldCheck className="h-4 w-4 text-green-600" />
+            case 'EDITOR':
+                return <PencilLine className="h-4 w-4 text-blue-500" />
+            case 'VIEWER':
+                return <Eye className="h-4 w-4 text-gray-400" />
+            default:
+                return null
+        }
+    }
+
+
+    async function clickeHandler(doc: any) {
+        setContent(doc.content)
+        setTitle(doc.title)
+        setCurrDoc(doc)
+        setPermission(doc.permission)
+    }
+
+    async function saveHandler() {
+        try {
+            const resp = await axios.post("/api/docs/save", { title, content, permission }, { withCredentials: true });
+            setSaved(true)
+            setCurrDoc(resp.data.doc)
+            console.log("Saved successfully:", resp.data);
+        } catch (error) {
+            console.error("Error saving:", error);
+        }
+    }
 
     return (
         <div className="flex items-center justify-between h-14 px-6 bg-white border-b border-gray-200">
@@ -70,13 +99,21 @@ export default function TitleBar({
                     <SheetContent side="left" className="w-80 p-0">
                         {/* Sidebar Header */}
                         <div className="p-6 border-b border-gray-200">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-lg font-semibold text-gray-900">Documents</h2>
-                                <Button size="sm" className="h-8 px-3" onClick={()=>{setContent("") ;setTitle("")}}>
-                                    <Plus className="h-4 w-4 mr-1" />
-                                    New
+                            <div className="mb-4">
+                                <h2 className="text-lg font-semibold text-gray-900 mb-2">Documents</h2>
+                                <Button
+                                    size="sm"
+                                    className="h-8 px-3 w-full justify-center"
+                                    onClick={() => {
+                                        setContent("")
+                                        setTitle("")
+                                    }}
+                                >
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    New Document
                                 </Button>
                             </div>
+
 
                             {/* Search Bar */}
                             <div className="relative">
@@ -95,14 +132,22 @@ export default function TitleBar({
                             {filteredDocuments.length > 0 ? (
                                 <div className="space-y-1">
                                     {filteredDocuments.map((doc, i) => (
-                                        <div key={i} onClick={() => clickeHandler(doc, setContent, setTitle)}
-                                            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors group"
+                                        <div
+                                            key={i}
+                                            onClick={() => clickeHandler(doc)}
+                                            className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors group"
                                         >
-                                            <FileText className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
-                                            <span className="text-sm text-gray-700 group-hover:text-gray-900 truncate">
-                                                {doc.title}
-                                            </span>
+                                            {/* Left: File + Title */}
+                                            <div className="flex items-center gap-3">
+                                                <FileText className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
+                                                <span className="text-sm text-gray-700 group-hover:text-gray-900 truncate">
+                                                    {doc.title}
+                                                </span>
+                                            </div>
+                                            {/* Right: Permission Icon */}
+                                            {getPermissionIcon(doc.permission)}
                                         </div>
+
                                     ))}
                                 </div>
                             ) : (
@@ -136,17 +181,11 @@ export default function TitleBar({
 
             {/* Right Section - Actions */}
             <div className="flex items-center gap-2">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-3 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                >
-                    Share
-                </Button>
+                <ShareModal permission={permission} setPermission={setPermission} doc_id={currDoc?.id} saved={saved} />
                 <Button
                     size="sm"
                     className="h-8 px-4 text-sm font-medium"
-                    onClick={() => saveHandler(content, title)}
+                    onClick={() => saveHandler()}
                 >
                     Save
                 </Button>

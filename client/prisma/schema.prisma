@@ -40,7 +40,6 @@ model Document {
 enum Permission {
   OWNER
   EDITOR
-  COMMENTER
   VIEWER
 }
 
