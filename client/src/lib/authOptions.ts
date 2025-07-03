@@ -16,7 +16,7 @@ export const authOptions = {
                 if (!parsedObj.success) {
                     throw new Error("error parsing the data")
                 }
-                const data= parsedObj.data
+                const data = parsedObj.data
                 try {
                     const existingUser = await prisma.user.findFirst({
                         where: {
@@ -39,7 +39,7 @@ export const authOptions = {
                     console.log("Error while logging in : ", error);
                     return null;
                 }
-                
+
             }
         }),
     ],
@@ -47,8 +47,11 @@ export const authOptions = {
     callbacks: {
         async session({ token, session }: any) {
             session.user.id = token.sub,
-            session.user.email=token.email
+                session.user.email = token.email
             return session
         }
+    },
+    pages: {
+        signIn: '../../signin',
     }
 }
