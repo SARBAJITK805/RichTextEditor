@@ -60,14 +60,14 @@ const saveTimeouts = new Map<string, NodeJS.Timeout>();
 const ysocketio = new YSocketIO(io, {
     authenticate: async (handshake: { [key: string]: any }) => {
         const doc_id = handshake.query?.doc_id;
-        const email=handshake.query?.email;
+        const email = handshake.query?.email;
         if (!doc_id) {
             console.log("No document ID provided in handshake");
             return false;
         }
 
         console.log(email);
-        
+
 
         if (!email) {
             console.log("No valid session token.");
@@ -127,7 +127,7 @@ setInterval(async () => {
         await saveDocumentState(docName, ydoc)
     }
     console.log(`Periodic save completed for ${activeDocuments.size} documents`)
-}, 120000)
+}, 12000)
 
 io.on('connection', (socket) => {
     const doc_id = socket.handshake.query.doc_id;

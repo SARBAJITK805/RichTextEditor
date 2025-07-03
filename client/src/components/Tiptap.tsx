@@ -6,7 +6,7 @@ import MenuBar from './MenuBar'
 import axios from "axios";
 import TextAlign from '@tiptap/extension-text-align'
 import Highlight from '@tiptap/extension-highlight'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import TitleBar from './TitleBar'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
@@ -14,22 +14,20 @@ import * as Y from 'yjs'
 import { SocketIOProvider } from 'y-socket.io'
 import { useSession } from 'next-auth/react';
 
-
 const Tiptap = () => {
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [permission, setPermission] = useState<"OWNER" | "EDITOR" | "VIEWER">("OWNER")
-  const [hasInitialized, setHasInitialized] = useState(true)
+  const [hasInitialized, setHasInitialized] = useState(false)
   const [ydoc, setYdoc] = useState<Y.Doc | null>(null)
   const [provider, setProvider] = useState<SocketIOProvider | null>(null)
   const [isCollaborating, setIsCollaborating] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
-  console.log(content)
-
+  const collaborationRef = useRef(false)
   const session = useSession()
 
   async function saveCollaborativeDocument() {
-    if (!editor || !isCollaborating) {
+    if (!editor || !collaborationRef.current) {
       return
     }
     try {
@@ -49,6 +47,12 @@ const Tiptap = () => {
   }
 
   function startCollaboration(doc_id: string) {
+    if (collaborationRef.current) {
+      return
+    }
+
+    const currentContent = editor?.getHTML() || content
+
     const doc = new Y.Doc()
     const socketProvider = new SocketIOProvider(
       'http://localhost:8080',
@@ -60,10 +64,11 @@ const Tiptap = () => {
       {
         query: {
           doc_id,
-          email:session.data?.user?.email
+          email: session.data?.user?.email
         }
       },
     )
+
     socketProvider.on('status', (event: any) => {
       setConnectionStatus(event.status)
     })
@@ -86,28 +91,35 @@ const Tiptap = () => {
     setYdoc(doc)
     setProvider(socketProvider)
     setIsCollaborating(true)
+    collaborationRef.current = true
     setConnectionStatus('connecting')
+    setContent(currentContent)
   }
 
   async function stopCollaboration() {
-    if (editor && isCollaborating) {
+    if (!collaborationRef.current) {
+      return
+    }
+
+    if (editor) {
       await saveCollaborativeDocument()
     }
+
     if (provider) {
       provider.destroy()
     }
     if (ydoc) {
       ydoc.destroy()
     }
+
     setYdoc(null)
     setProvider(null)
     setIsCollaborating(false)
+    collaborationRef.current = false
     setConnectionStatus('disconnected')
-
-    if (editor && content) {
-      editor.commands.setContent(content)
-    }
+    setContent(editor?.getHTML() || content)
   }
+
 
   const editor = useEditor({
     extensions: [
@@ -128,14 +140,14 @@ const Tiptap = () => {
         types: ['heading', 'paragraph'],
       }),
       Highlight,
-      ...(isCollaborating && ydoc ? [
+      ...(ydoc && provider ? [
         Collaboration.configure({
           document: ydoc,
         }),
         CollaborationCursor.configure({
           provider: provider,
           user: {
-            name: 'User',
+            name: session.data?.user?.email || 'Anonymous',
             color: '#f783ac',
           },
         }),
@@ -148,56 +160,89 @@ const Tiptap = () => {
       },
     },
     onUpdate: ({ editor }) => {
-      if (!isCollaborating) {
+
+      if (!collaborationRef.current) {
         setContent(editor.getHTML())
       }
     },
-  })
+
+    onCreate: ({ editor }) => {
+      if (collaborationRef.current) {
+
+        if (content && content !== '<p></p>') {
+
+          setTimeout(() => {
+            editor.commands.setContent(content)
+          }, 100)
+        }
+      } else if (!collaborationRef.current && content) {
+        editor.commands.setContent(content)
+      }
+    },
+  }, [ydoc, provider, isCollaborating])
+
 
   useEffect(() => {
-    if (editor && content && !hasInitialized) {
+    if (editor && isCollaborating && ydoc && provider && content) {
+
+      const handleConnect = () => {
+        if (content && content !== '<p></p>' && content.trim() !== '') {
+          editor.commands.setContent(content)
+        }
+      }
+
+      if (connectionStatus === 'connected') {
+        handleConnect()
+      } else {
+        provider.on('connect', handleConnect)
+      }
+
+      return () => {
+        provider?.off('connect', handleConnect)
+      }
+    }
+  }, [editor, isCollaborating, ydoc, provider, connectionStatus])
+
+
+  useEffect(() => {
+    if (editor && content && !hasInitialized && !collaborationRef.current) {
       editor.commands.setContent(content)
       setHasInitialized(true)
     }
-  }, [editor, content])
+  }, [editor, content, hasInitialized])
+
 
   useEffect(() => {
-    setHasInitialized(false)
-    if (editor) {
-      editor.commands.setContent(content)
+    if (!collaborationRef.current) {
+      setHasInitialized(false)
+      if (editor && content) {
+        editor.commands.setContent(content)
+      }
     }
-  }, [title])
+  }, [title, editor])
+
 
   useEffect(() => {
     editor?.setEditable(permission !== "VIEWER")
   }, [editor, permission])
 
+
   useEffect(() => {
-    setInterval(() => {
-      saveCollaborativeDocument()
-    }, 1000)
-  }, [editor, isCollaborating, title])
+    const interval = setInterval(() => {
+      if (collaborationRef.current) {
+        saveCollaborativeDocument()
+      }
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [editor, title])
+
 
   useEffect(() => {
     return () => {
       stopCollaboration()
     }
   }, [])
-
-  useEffect(() => {
-    if (!ydoc || !isCollaborating) return
-    const updateHandler = () => {
-      if (editor) {
-        const currentContent = editor.getHTML()
-        setContent(currentContent)
-      }
-    }
-    ydoc.on('update', updateHandler)
-
-    return () => {
-      ydoc.off('update', updateHandler)
-    }
-  }, [ydoc, editor, isCollaborating])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -214,6 +259,7 @@ const Tiptap = () => {
             onStopCollaboration={stopCollaboration}
             isCollaborating={isCollaborating}
             connectionStatus={connectionStatus}
+            yjs_state={ydoc}
           />
         </div>
 

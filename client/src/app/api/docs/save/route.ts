@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
     }
 
-    const { title, content, permission } = await req.json()
+    const { title, content, permission,yjs_state } = await req.json()
 
     try {
         const existing = await prisma.document.findFirst({ where: { title } })
@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
                 data: {
                     title,
                     content,
+                    yjs_state,
                     owner_id: session.user.id,
                     permissions: {
                         create: {

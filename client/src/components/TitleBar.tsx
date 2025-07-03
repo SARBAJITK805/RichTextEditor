@@ -9,11 +9,13 @@ import {
 import { useEffect, useState } from "react"
 import axios from "axios"
 import ShareModal from "./ShareModal"
+import * as Y from 'yjs'
 
 export default function TitleBar({
     content,
     title,
     permission,
+    yjs_state,
     setTitle,
     setContent,
     setPermission,
@@ -25,6 +27,7 @@ export default function TitleBar({
     content: string
     title: string
     permission: string
+    yjs_state: Y.Doc|null
     setTitle: (value: string) => void
     setContent: (value: string) => void
     setPermission: (value: "OWNER" | "EDITOR" | "VIEWER") => void
@@ -80,7 +83,7 @@ export default function TitleBar({
 
     async function saveHandler() {
         try {
-            const resp = await axios.post("/api/docs/save", { title, content, permission }, { withCredentials: true });
+            const resp = await axios.post("/api/docs/save", { title, content, permission, yjs_state }, { withCredentials: true });
             setSaved(true)
             setCurrDoc(resp.data.doc)
             console.log("Saved successfully:", resp.data);
@@ -90,12 +93,7 @@ export default function TitleBar({
     }
 
     async function collabHandler() {
-        console.log(saved,currDoc?.id);
-        
-        if (!saved || !currDoc?.id) {
-            alert("Please save the document first before collaborating!")
-            return
-        }
+        await saveHandler()
         if (permission === "VIEWER") {
             alert("Viewers cannot collaborate. You need Editor or Owner permissions.")
             return
