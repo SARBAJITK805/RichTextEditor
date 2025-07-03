@@ -1,159 +1,155 @@
-import express from 'express'
-import http from 'http'
+import express from "express";
+import http from "http";
 import { Server } from "socket.io";
-import cors from 'cors'
+import cors from "cors";
+import { YSocketIO } from "y-socket.io/dist/server";
+import { prisma } from "./lib/prisma"
+import * as Y from "yjs";
+
+async function saveDocumentState(doc_id: string, ydoc: any) {
+    try {
+        const YDocState = Buffer.from(Y.encodeStateAsUpdate(ydoc))
+        await prisma.document.update({
+            where: {
+                id: doc_id
+            },
+            data: {
+                yjs_state: YDocState,
+                updated_at: new Date()
+            }
+        })
+    } catch (error) {
+        console.error(`Failed to save document ${doc_id}:`, error)
+    }
+}
+
+async function loadDocumentState(docId: string, ydoc: any) {
+    try {
+        const document = await prisma.document.findUnique({
+            where: { id: docId },
+            select: { yjs_state: true }
+        })
+
+        if (document?.yjs_state) {
+            Y.applyUpdate(ydoc, new Uint8Array(document.yjs_state))
+            console.log(`Loaded existing state for document ${docId}`)
+        }
+    } catch (error) {
+        console.error(`Failed to load document ${docId}:`, error)
+    }
+}
 
 const app = express()
-app.use(express.json())
-app.use(cors())
-const server = http.createServer(app)
+app.use(cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+}))
 
-const activeRooms = new Map<string, Set<string>>();
+const httpServer = http.createServer(app)
 
-const io = new Server(server, {
+const io = new Server(httpServer, {
     cors: {
-        origin: "https://localhost:3000",
+        origin: "http://localhost:3000",
         methods: ["GET", "POST"],
-        credentials: true
+        credentials: true,
     }
 })
 
-interface SocketData {
-    doc_id: string
-    user_id: string,
-    user_name?: string
-}
+const saveTimeouts = new Map<string, NodeJS.Timeout>();
 
-interface EditData {
-    content: string;
-    position: number;
-    operation: 'insert' | 'delete' | 'format';
-    timestamp: number;
-}
+const ysocketio = new YSocketIO(io, {
+    authenticate: async (handshake: { [key: string]: any }) => {
+        const doc_id = handshake.query?.doc_id;
+        const email=handshake.query?.email;
+        if (!doc_id) {
+            console.log("No document ID provided in handshake");
+            return false;
+        }
 
-interface CursorData {
-    user_id: string;
-    user_name: string;
-    position: number;
-    selection?: {
-        from: number;
-        to: number;
-    };
-}
+        console.log(email);
+        
+
+        if (!email) {
+            console.log("No valid session token.");
+            return false;
+        }
+
+        const permission = await prisma.document_Permissions.findFirst({
+            where: {
+                document_id: doc_id,
+                OR: [
+                    { email: email },
+                    { user: { email: email } }
+                ]
+            }
+        })
+
+        if (!permission) {
+            console.log(`Access denied for document ${doc_id}`);
+            return false;
+        }
+
+        console.log(`User ${email} authorized for document ${doc_id}`);
+        return true
+    }
+});
+
+ysocketio.initialize();
+
+
+ysocketio.on('documentCreate', async (docName: string, ydoc: Y.Doc) => {
+    console.log(`Document created: ${docName}`)
+    await loadDocumentState(docName, ydoc)
+});
+
+ysocketio.on('documentDestroy', async (docName: string, ydoc: Y.Doc) => {
+    console.log(`Document destroyed: ${docName}`)
+    await saveDocumentState(docName, ydoc)
+});
+
+ysocketio.on('documentUpdate', async (docName: string, ydoc: Y.Doc, update: Uint8Array) => {
+    if (saveTimeouts.has(docName)) {
+        clearTimeout(saveTimeouts.get(docName))
+    }
+
+    const timeout = setTimeout(async () => {
+        await saveDocumentState(docName, ydoc)
+        saveTimeouts.delete(docName)
+    }, 5000)
+
+    saveTimeouts.set(docName, timeout)
+});
+
+
+setInterval(async () => {
+    const activeDocuments = ysocketio.documents
+    for (const [docName, ydoc] of activeDocuments) {
+        await saveDocumentState(docName, ydoc)
+    }
+    console.log(`Periodic save completed for ${activeDocuments.size} documents`)
+}, 120000)
 
 io.on('connection', (socket) => {
-    console.log('a user connected:', socket.id);
+    const doc_id = socket.handshake.query.doc_id;
+    const user_email = socket.handshake.auth?.email || 'Anonymous'
 
-    const doc_id = socket.handshake.query.doc_id as string
-    const user_id = socket.handshake.query.user_id as string
-    const user_name = socket.handshake.query.user_name as string
-
-    if (!doc_id || !user_id) {
-        console.log('No doc_id or user_id provided,disconnecting...');
-        socket.emit('error', { message: 'Document ID and User ID is required' });
+    if (!doc_id) {
+        socket.emit('error', { msg: "Document ID is required" })
         socket.disconnect()
         return
     }
 
-    socket.data = { user_id, doc_id, user_name }
+    console.log(`User ${user_email} connected to document: ${doc_id}`)
 
-    const roomName = `room_doc_${doc_id}`
-    socket.join(roomName)
-
-    if (activeRooms.has(roomName)) {
-        activeRooms.set(roomName, new Set());
-    }
-    activeRooms?.get(roomName)?.add(user_id)
-
-    socket.to(roomName).emit('user-joined', {
-        user_id,
-        user_name,
-        message: `${user_name} joined the document`
+    socket.on('disconnect', (reason) => {
+        console.log(`User ${user_email} disconnected from document ${doc_id}: ${reason}`)
     })
 
-    const activeUsers = Array.from(activeRooms.get(roomName) || [])
-    socket.to(roomName).emit('active-users', { users: activeUsers })
-
-    socket.on('document-edit', (editData: EditData) => {
-        if (!editData || typeof editData.content !== 'string') {
-            socket.emit('error', { message: 'Invalid edit data' });
-            return;
-        }
-        const enrichedEditData = {
-            ...editData,
-            user_id: socket.data.user_id,
-            user_name: socket.data.user_name,
-            socket_id: socket.id,
-            timestamp: Date.now()
-        };
-
-        socket.to(roomName).emit('document-edit', enrichedEditData)
-    })
-
-    socket.on('cursor-update', (cursorData: CursorData) => {
-        const enrichedCursorData = {
-            ...cursorData,
-            user_id: socket.data.user_id,
-            user_name: socket.data.user_name,
-            socket_id: socket.id
-        }
-        socket.to(roomName).emit('cursor-update', enrichedCursorData)
-    })
-
-    socket.on('typing-start', () => {
-        socket.to(roomName).emit('typing-start', {
-            user_id: socket.data.user_id,
-            user_name: socket.data.user_name
-        });
-    });
-
-    socket.on('typing-stop', () => {
-        socket.to(roomName).emit('typing-stop', {
-            user_id: socket.data.user_id,
-            user_name: socket.data.user_name
-        });
-    });
-
-    socket.on('disconnect', () => {
-        console.log('user disconnected:', socket.id)
-        const socketData = socket.data as SocketData
-        if (socketData.doc_id && socketData.user_id) {
-            const roomName = `room_doc_${socketData.doc_id}`;
-            activeRooms.get(roomName)?.delete(socketData.user_id);
-
-            if (activeRooms.get(roomName)?.size == 0) {
-                activeRooms.delete(roomName)
-            }
-
-            socket.to(roomName).emit('user-left', {
-                user_id: socketData.user_id,
-                user_name: socketData.user_name,
-                message: `${socketData.user_name} left the document`
-            });
-        }
+    socket.on('connect_error', (error) => {
+        console.error(`Connection error for document ${doc_id}:`, error)
     })
 })
 
-server.on('error', (err) => {
-    console.error('Server error:', err);
-});
-
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully');
-    server.close(() => {
-        console.log('Server closed');
-        process.exit(0);
-    });
-});
-
-process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully');
-    server.close(() => {
-        console.log('Server closed');
-        process.exit(0);
-    });
-});
-
-server.listen(8080, () => {
-    console.log('WebSocket server running at http://localhost:8080');
+httpServer.listen(8080, () => {
+    console.log(`WebSocket server is running at http://localhost:8080`);
 });

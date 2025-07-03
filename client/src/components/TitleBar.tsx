@@ -16,8 +16,11 @@ export default function TitleBar({
     permission,
     setTitle,
     setContent,
-    setPermission
-
+    setPermission,
+    onStartCollaboration,
+    onStopCollaboration,
+    isCollaborating,
+    connectionStatus
 }: {
     content: string
     title: string
@@ -25,6 +28,10 @@ export default function TitleBar({
     setTitle: (value: string) => void
     setContent: (value: string) => void
     setPermission: (value: "OWNER" | "EDITOR" | "VIEWER") => void
+    onStartCollaboration: (docId: string) => void
+    onStopCollaboration: () => void
+    isCollaborating: boolean
+    connectionStatus: 'disconnected' | 'connecting' | 'connected'
 }) {
     const [documents, setDocuments] = useState<
         { title: string; content: string; permission: 'OWNER' | 'EDITOR' | 'VIEWER' }[]
@@ -32,12 +39,12 @@ export default function TitleBar({
 
     const [searchQuery, setSearchQuery] = useState("")
     const [currDoc, setCurrDoc] = useState<{ id: string; content: string, title: string }>()
-    const[saved,setSaved]=useState(false)
+    const [saved, setSaved] = useState(false)
 
     useEffect(() => {
         async function fetchDocs() {
             try {
-                const res = await axios.get("/api/docs", { withCredentials: true })              
+                const res = await axios.get("/api/docs", { withCredentials: true })
                 setDocuments(res.data.list)
             } catch (err) {
                 console.error("Error fetching documents:", err)
@@ -79,6 +86,29 @@ export default function TitleBar({
             console.log("Saved successfully:", resp.data);
         } catch (error) {
             console.error("Error saving:", error);
+        }
+    }
+
+    async function collabHandler() {
+        console.log(saved,currDoc?.id);
+        
+        if (!saved || !currDoc?.id) {
+            alert("Please save the document first before collaborating!")
+            return
+        }
+        if (permission === "VIEWER") {
+            alert("Viewers cannot collaborate. You need Editor or Owner permissions.")
+            return
+        }
+        try {
+            if (isCollaborating) {
+                onStopCollaboration()
+            } else {
+                onStartCollaboration(currDoc?.id||"")
+            }
+        } catch (error) {
+            console.error("Error toggling collaboration:", error)
+            alert("Failed to toggle collaboration. Please try again.")
         }
     }
 
@@ -181,13 +211,33 @@ export default function TitleBar({
 
             {/* Right Section - Actions */}
             <div className="flex items-center gap-2">
-                <ShareModal permission={permission} setPermission={setPermission} doc_id={currDoc?.id} saved={saved} />
+                <ShareModal permission={permission} setPermission={setPermission} doc_id={currDoc?.id||""} saved={saved} />
                 <Button
                     size="sm"
                     className="h-8 px-4 text-sm font-medium"
                     onClick={() => saveHandler()}
                 >
                     Save
+                </Button>
+                <Button
+                    size="sm"
+                    className={`h-8 px-4 text-sm font-medium ${isCollaborating
+                            ? 'bg-green-600 hover:bg-green-700'
+                            : 'bg-blue-600 hover:bg-blue-700'
+                        }`}
+                    onClick={collabHandler}
+                    disabled={connectionStatus === 'connecting'}
+                >
+                    {connectionStatus === 'connecting' ? (
+                        <>
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
+                            Connecting...
+                        </>
+                    ) : isCollaborating ? (
+                        'Stop Collab'
+                    ) : (
+                        'Start Collab'
+                    )}
                 </Button>
             </div>
         </div>
