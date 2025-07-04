@@ -97,17 +97,17 @@ const ysocketio = new YSocketIO(io, {
 ysocketio.initialize();
 
 
-ysocketio.on('documentCreate', async (docName: string, ydoc: Y.Doc) => {
+ysocketio.on('document-loaded', async (docName: string, ydoc: Y.Doc) => {
     console.log(`Document created: ${docName}`)
     await loadDocumentState(docName, ydoc)
 });
 
-ysocketio.on('documentDestroy', async (docName: string, ydoc: Y.Doc) => {
+ysocketio.on('document-destroy', async (docName: string, ydoc: Y.Doc) => {
     console.log(`Document destroyed: ${docName}`)
     await saveDocumentState(docName, ydoc)
 });
 
-ysocketio.on('documentUpdate', async (docName: string, ydoc: Y.Doc, update: Uint8Array) => {
+ysocketio.on('document-update', async (docName: string, ydoc: Y.Doc, update: Uint8Array) => {
     if (saveTimeouts.has(docName)) {
         clearTimeout(saveTimeouts.get(docName))
     }
@@ -123,8 +123,10 @@ ysocketio.on('documentUpdate', async (docName: string, ydoc: Y.Doc, update: Uint
 
 setInterval(async () => {
     const activeDocuments = ysocketio.documents
-    for (const [docName, ydoc] of activeDocuments) {
-        await saveDocumentState(docName, ydoc)
+    if (activeDocuments.size != 0) {
+        for (const [docName, ydoc] of activeDocuments) {
+            await saveDocumentState(docName, ydoc)
+        }
     }
     console.log(`Periodic save completed for ${activeDocuments.size} documents`)
 }, 12000)
